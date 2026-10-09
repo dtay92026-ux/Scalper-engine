@@ -67,6 +67,7 @@ DEFAULTS = {
     "sl_money": 5.0,
     "tp_money": 6.0,
     "max_trades": 1,
+    "repeat": True,
     "ea_token": "",
     "tg_enabled": True,
     "tg_token": "",
@@ -308,6 +309,7 @@ def ea_poll():
         "sl_money": float(config["sl_money"]),
         "tp_money": float(config["tp_money"]),
         "max_trades": int(config["max_trades"]),
+        "repeat": 1 if config["repeat"] else 0,
     }
     return Response(json.dumps(resp, separators=(",", ":")), mimetype="application/json")
 
@@ -385,6 +387,7 @@ def public_config():
         "sl_money": config["sl_money"],
         "tp_money": config["tp_money"],
         "max_trades": config["max_trades"],
+        "repeat": bool(config["repeat"]),
         "tg_enabled": config["tg_enabled"],
         "tg_chat": config["tg_chat"],
         "tg_token_set": bool(tok),
@@ -449,6 +452,8 @@ def api_config():
                 if not 0.01 <= v <= 1_000_000:
                     raise ValueError(f"{label} amount must be at least 0.01")
                 new[key] = round(v, 2)
+        if "repeat" in b:
+            new["repeat"] = bool(b["repeat"])
         if "tg_enabled" in b:
             new["tg_enabled"] = bool(b["tg_enabled"])
         if "tg_chat" in b:
@@ -465,10 +470,10 @@ def api_config():
         changed = {k: v for k, v in new.items() if config.get(k) != v}
         config.update(new)
         save_config()
-    trading = [k for k in changed if k in ("lot", "max_trades", "sl_money", "tp_money")]
+    trading = [k for k in changed if k in ("lot", "max_trades", "repeat", "sl_money", "tp_money")]
     if trading:
         log("control",
-            f"Settings saved · lot {config['lot']} · {config['max_trades']} trade(s) per START · SL {config['sl_money']} · TP {config['tp_money']} (money per trade)",
+            f"Settings saved · lot {config['lot']} · {config['max_trades']} trade(s) · {'keep trading' if config['repeat'] else 'one batch per START'} · SL {config['sl_money']} · TP {config['tp_money']} (money per trade)",
             "info")
     if any(k.startswith("tg_") for k in changed):
         log("control", "Telegram settings updated", "info")
@@ -702,8 +707,10 @@ ol.steps b{color:var(--text)}
       <div class="f"><label for="cfgLot">LOT SIZE</label>
         <div class="inp"><input type="number" id="cfgLot" step="0.01" min="0.01" inputmode="decimal"><span>LOTS</span></div></div>
       <div class="f"><label for="cfgTrades">NUMBER OF TRADES</label>
-        <div class="inp"><input type="number" id="cfgTrades" step="1" min="1" inputmode="numeric"><span>PER START</span></div>
-        <div class="note">How many trades the EA opens each time you press START.</div></div>
+        <div class="inp"><input type="number" id="cfgTrades" step="1" min="1" inputmode="numeric"><span>TRADES</span></div>
+        <div class="note">How many trades the EA opens when you press START (and keeps open while it keeps trading).</div></div>
+      <div class="f switch"><span>Keep trading until I press STOP</span><input type="checkbox" id="cfgRepeat"></div>
+      <div class="note" style="margin:-8px 0 18px">On: the EA keeps that many trades open and opens new ones as they close. Off: it opens them once per START.</div>
       <div class="f"><label for="cfgSL">STOP LOSS · MONEY</label>
         <div class="inp"><input type="number" id="cfgSL" step="0.01" min="0.01" inputmode="decimal"><span class="cur">USD</span></div>
         <div class="note">The most you are willing to lose on one trade.</div></div>
@@ -867,12 +874,12 @@ function render(){
 }
 
 function fillForm(c){
-  $('#cfgLot').value = c.lot; $('#cfgTrades').value = c.max_trades; $('#cfgSL').value = c.sl_money; $('#cfgTP').value = c.tp_money;
+  $('#cfgLot').value = c.lot; $('#cfgTrades').value = c.max_trades; $('#cfgRepeat').checked = !!c.repeat; $('#cfgSL').value = c.sl_money; $('#cfgTP').value = c.tp_money;
   $('#cfgTgOn').checked = !!c.tg_enabled; $('#cfgTgChat').value = c.tg_chat || ''; $('#cfgTgToken').value = '';
 }
 async function saveConfig(){
   const j = await api('/api/config', {
-    lot: $('#cfgLot').value, max_trades: $('#cfgTrades').value, sl_money: $('#cfgSL').value, tp_money: $('#cfgTP').value,
+    lot: $('#cfgLot').value, max_trades: $('#cfgTrades').value, repeat: $('#cfgRepeat').checked, sl_money: $('#cfgSL').value, tp_money: $('#cfgTP').value,
     tg_enabled: $('#cfgTgOn').checked, tg_chat: $('#cfgTgChat').value, tg_token: $('#cfgTgToken').value
   });
   fillForm(j.config);
